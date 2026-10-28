@@ -23,7 +23,7 @@ from registro_actas.excel_export import build_excel_bytes
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-cambia-esto")
 
-MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB por lote subido
+MAX_CONTENT_LENGTH = 150 * 1024 * 1024  # 150 MB por lote subido
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
 # Contraseña de acceso (opcional). Si no se define la variable de entorno
