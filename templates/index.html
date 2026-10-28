@@ -2,40 +2,87 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registro de Actas de Entrega/Devolución</title>
 <style>
-  body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f9; color: #1f2d3d; }
-  header { background: #1F3864; color: white; padding: 20px 32px; }
-  header h1 { margin: 0; font-size: 20px; }
-  main { padding: 24px 32px; max-width: 1200px; margin: 0 auto; }
-  .card { background: white; border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .stats { display: flex; gap: 16px; margin-bottom: 20px; }
-  .stat { flex: 1; background: white; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .stat .num { font-size: 28px; font-weight: bold; color: #1F3864; }
-  .stat .label { font-size: 13px; color: #666; }
-  input[type=file] { display:block; margin: 12px 0; }
-  button, .btn { background: #1F3864; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
-  button:hover, .btn:hover { background: #163055; }
+  :root { --blue:#1F3864; --blue-dark:#163055; --red:#a94442; --gray:#6b7280; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; background: #eef1f5; color: #1f2d3d; font-size: 14px; }
+  header { background: var(--blue); color: white; padding: 14px 24px; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 600; }
+  main { padding: 16px; max-width: 1300px; margin: 0 auto; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .col { flex: 1; min-width: 260px; }
+
+  .card { background: white; border-radius: 8px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .card h3 { margin: 0 0 8px; font-size: 13px; color: #374151; text-transform: uppercase; letter-spacing: .03em; }
+
+  /* tarjetas de estadística, compactas y en línea */
+  .stat-row { display:flex; gap:12px; margin-bottom:12px; }
+  .stat { flex:1; background:white; border-radius:8px; padding:10px 14px; box-shadow:0 1px 2px rgba(0,0,0,.06); display:flex; align-items:center; gap:10px; }
+  .stat .num { font-size: 22px; font-weight: 700; color: var(--blue); line-height:1; }
+  .stat .label { font-size: 11px; color: #6b7280; }
+  .stat.warn .num { color: var(--red); }
+
+  /* zona de arrastrar y soltar */
+  .dropzone {
+    border: 2px dashed #c7cdd6; border-radius: 8px; padding: 18px 12px;
+    text-align: center; color: #6b7280; cursor: pointer; transition: all .15s;
+    background: #fafbfc; font-size: 13px;
+  }
+  .dropzone.dragover { border-color: var(--blue); background: #eef2fb; color: var(--blue); }
+  .dropzone input[type=file] { display:none; }
+  .dropzone .icon { font-size: 22px; display:block; margin-bottom:4px; }
+  .filelist { font-size: 12px; color: #374151; margin-top: 8px; text-align:left; max-height: 70px; overflow-y:auto; }
+
+  /* botones compactos, ícono + texto corto */
+  button, .btn {
+    background: var(--blue); color: white; border: none; padding: 7px 12px; border-radius: 6px;
+    font-size: 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items:center; gap:6px;
+    white-space: nowrap;
+  }
+  button:hover, .btn:hover { background: var(--blue-dark); }
+  button:disabled { background:#aab3c0; cursor:not-allowed; }
+  .btn.danger { background: var(--red); }
+  .btn.danger:hover { background: #8a3936; }
+  .btn.gray { background: var(--gray); }
+  .btn.gray:hover { background: #4b5563; }
+  .btn.sm { padding: 5px 10px; font-size: 12px; }
+
+  .confirm-inline { display:flex; gap:6px; align-items:center; }
+  .confirm-inline input[type=text] { padding:6px 8px; border-radius:6px; border:1px solid #ccc; width:140px; font-size:12px; }
+
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-  th { background: #1F3864; color: white; position: sticky; top: 0; }
-  tr.flag { background: #fff2cc; }
-  .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; }
+  th, td { border-bottom: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; }
+  th { background: #f3f4f6; color: #374151; position: sticky; top: 0; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.02em; }
+  tr:hover td { background: #f9fafb; }
+  tr.flag td { background: #fff7e0; }
+  tr.flag:hover td { background: #fdf0c4; }
+  .scroll { overflow-x: auto; max-height: 560px; overflow-y: auto; border:1px solid #e5e7eb; border-radius:6px; }
+
+  .flash { padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
   .flash.success { background: #d4edda; color: #155724; }
   .flash.error { background: #f8d7da; color: #721c24; }
   .flash.warning { background: #fff3cd; color: #856404; }
   .flash.info { background: #d1ecf1; color: #0c5460; }
-  .scroll { overflow-x: auto; max-height: 520px; overflow-y: auto; }
-  small.muted { color: #888; }
+  #flashes { max-height: 160px; overflow-y: auto; margin-bottom: 12px; }
+
+  .toolbar { display:flex; justify-content: space-between; align-items:center; flex-wrap: wrap; gap:8px; margin-bottom:10px; }
+  .search-form { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .search-form input[type=text] { padding:6px 10px; border-radius:6px; border:1px solid #ccc; width:260px; font-size:13px; }
+  .search-form label { font-size:12px; color:#6b7280; display:flex; align-items:center; gap:4px; white-space:nowrap; }
+  small.muted { color: #9ca3af; font-size: 11px; }
+  .badge { background:#fff2cc; color:#856404; border-radius:10px; padding:1px 8px; font-size:11px; }
 </style>
 </head>
 <body>
-<header><h1>Registro de Actas de Entrega / Devolución de Equipos</h1></header>
+<header><h1>📋 Registro de Actas de Entrega / Devolución de Equipos</h1></header>
 <main>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="card">
+      <div id="flashes">
         {% for category, message in messages %}
           <div class="flash {{ category }}">{{ message }}</div>
         {% endfor %}
@@ -43,46 +90,56 @@
     {% endif %}
   {% endwith %}
 
-  <div class="stats">
-    <div class="stat"><div class="num">{{ total }}</div><div class="label">Equipos acumulados en total</div></div>
-    <div class="stat"><div class="num">{{ pendientes }}</div><div class="label">Filas marcadas para revisión</div></div>
+  <div class="stat-row">
+    <div class="stat"><span style="font-size:20px;">📦</span><div><div class="num">{{ total }}</div><div class="label">Equipos acumulados</div></div></div>
+    <div class="stat warn"><span style="font-size:20px;">⚠️</span><div><div class="num">{{ pendientes }}</div><div class="label">Pendientes de revisión</div></div></div>
+  </div>
+
+  <div class="row">
+    <div class="col" style="flex: 2;">
+      <div class="card">
+        <h3>Subir correos / PDF</h3>
+        <form id="upload-form" action="{{ url_for('subir') }}" method="post" enctype="multipart/form-data">
+          <label for="file-input" class="dropzone" id="dropzone">
+            <span class="icon">⬆️</span>
+            <span id="dropzone-text">Arrastra aquí tus .msg o .pdf, o haz clic para elegir</span>
+            <input id="file-input" type="file" name="archivos" multiple accept=".msg,.pdf" required>
+          </label>
+          <div class="filelist" id="filelist"></div>
+          <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+            <small class="muted">Lo ya procesado antes no se duplica.</small>
+            <button type="submit" id="submit-btn">📤 Procesar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card" style="margin-bottom:12px;">
+        <h3>Excel acumulado</h3>
+        <a class="btn" href="{{ url_for('descargar') }}" title="Descargar Registro_de_Actas.xlsx">⬇️ Descargar</a>
+      </div>
+      <div class="card">
+        <h3 style="color:var(--red);">Limpiar base</h3>
+        <form action="{{ url_for('limpiar') }}" method="post" class="confirm-inline"
+              onsubmit="return confirm('¿Seguro que quieres borrar TODO lo acumulado? Esta acción no se puede deshacer.');">
+          <input type="text" name="confirmacion" placeholder="Escribe BORRAR" required>
+          <button type="submit" class="btn danger sm" title="Borra todo lo acumulado">🗑️ Limpiar</button>
+        </form>
+      </div>
+    </div>
   </div>
 
   <div class="card">
-    <h3>Subir correos/PDF de Actas</h3>
-    <form action="{{ url_for('subir') }}" method="post" enctype="multipart/form-data">
-      <input type="file" name="archivos" multiple accept=".msg,.pdf" required>
-      <small class="muted">Puedes seleccionar varios .msg y/o .pdf a la vez. Lo ya procesado antes no se duplica.</small>
-      <br><br>
-      <button type="submit">Procesar y agregar a la base</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Descargar Excel acumulado</h3>
-    <p><small class="muted">Incluye TODAS las filas procesadas hasta ahora, con su fecha de procesamiento.</small></p>
-    <a class="btn" href="{{ url_for('descargar') }}">Descargar Registro_de_Actas.xlsx</a>
-  </div>
-
-  <div class="card" style="border: 1px solid #f5c6cb;">
-    <h3 style="color:#a94442;">Limpiar base acumulada</h3>
-    <p><small class="muted">Borra TODAS las filas y el registro de archivos ya procesados. Es irreversible. Descarga el Excel antes si quieres conservar un respaldo.</small></p>
-    <form action="{{ url_for('limpiar') }}" method="post"
-          onsubmit="return confirm('¿Seguro que quieres borrar TODO lo acumulado? Esta acción no se puede deshacer.');">
-      <input type="text" name="confirmacion" placeholder='Escribe BORRAR para confirmar' required
-             style="padding:8px; border-radius:6px; border:1px solid #ccc; width:220px;">
-      <button type="submit" style="background:#a94442;">Limpiar todo</button>
-    </form>
-  </div>
-
-  <div class="card">
-    <h3>Vista previa (últimas 50 filas)</h3>
-    <form method="get" style="margin-bottom:14px;">
-      <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nombre, DNI, código de inventario, asunto..." style="padding:8px 10px; border-radius:6px; border:1px solid #ccc; width:320px;">
-      <label style="font-weight:normal; display:inline;"><input type="checkbox" name="pendientes" value="1" {{ 'checked' if solo_pend }}> solo pendientes de revisión</label>
-      <button type="submit">Buscar</button>
-      {% if q or solo_pend %}<a class="btn" href="{{ url_for('index') }}" style="background:#888;">Limpiar filtro</a>{% endif %}
-    </form>
+    <div class="toolbar">
+      <h3 style="margin:0;">Registro {% if q or solo_pend %}<span class="badge">filtrado</span>{% endif %}</h3>
+      <form method="get" class="search-form">
+        <input type="text" name="q" value="{{ q }}" placeholder="🔍 Nombre, DNI, código, asunto...">
+        <label><input type="checkbox" name="pendientes" value="1" {{ 'checked' if solo_pend }}> solo pendientes</label>
+        <button type="submit" class="sm">Buscar</button>
+        {% if q or solo_pend %}<a class="btn gray sm" href="{{ url_for('index') }}">✕ Limpiar</a>{% endif %}
+      </form>
+    </div>
     <div class="scroll">
     <table>
       <tr>
@@ -100,14 +157,63 @@
         <td>{{ r['Cod. Inventario'] }}</td>
         <td>{{ r['Descripción del activo'] }}</td>
         <td>{{ r['Revisar'] }}</td>
-        <td><a href="{{ url_for('editar', row_id=r['id']) }}">Editar</a></td>
+        <td><a href="{{ url_for('editar', row_id=r['id']) }}" title="Editar">✏️</a></td>
       </tr>
       {% endfor %}
     </table>
     </div>
-    <small class="muted">{{ 'Mostrando resultados de la búsqueda.' if (q or solo_pend) else 'Mostrando las últimas 50 filas. Usa el buscador para ver más.' }}</small>
+    <small class="muted">{{ 'Resultados de la búsqueda.' if (q or solo_pend) else 'Últimas 50 filas — usa el buscador para ver más.' }}</small>
   </div>
 
 </main>
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  const filelist = document.getElementById('filelist');
+  const dzText = document.getElementById('dropzone-text');
+  const submitBtn = document.getElementById('submit-btn');
+
+  function renderFileList() {
+    const files = fileInput.files;
+    if (!files || files.length === 0) {
+      filelist.innerHTML = '';
+      dzText.textContent = 'Arrastra aquí tus .msg o .pdf, o haz clic para elegir';
+      return;
+    }
+    dzText.textContent = files.length + ' archivo(s) listo(s) para procesar';
+    let html = '';
+    for (const f of files) {
+      html += '<div>📄 ' + f.name + ' (' + (f.size/1024).toFixed(0) + ' KB)</div>';
+    }
+    filelist.innerHTML = html;
+  }
+
+  fileInput.addEventListener('change', renderFileList);
+
+  ['dragenter', 'dragover'].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add('dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    });
+  });
+  dropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length) {
+      fileInput.files = dt.files;
+      renderFileList();
+    }
+  });
+
+  document.getElementById('upload-form').addEventListener('submit', () => {
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Procesando...';
+  });
+</script>
 </body>
 </html>
