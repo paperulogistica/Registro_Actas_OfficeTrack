@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Registro de Actas de Entrega/Devolución</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f9; color: #1f2d3d; }
+  header { background: #1F3864; color: white; padding: 20px 32px; }
+  header h1 { margin: 0; font-size: 20px; }
+  main { padding: 24px 32px; max-width: 1200px; margin: 0 auto; }
+  .card { background: white; border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .stats { display: flex; gap: 16px; margin-bottom: 20px; }
+  .stat { flex: 1; background: white; border-radius: 8px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .stat .num { font-size: 28px; font-weight: bold; color: #1F3864; }
+  .stat .label { font-size: 13px; color: #666; }
+  input[type=file] { display:block; margin: 12px 0; }
+  button, .btn { background: #1F3864; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+  button:hover, .btn:hover { background: #163055; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+  th { background: #1F3864; color: white; position: sticky; top: 0; }
+  tr.flag { background: #fff2cc; }
+  .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; font-size: 14px; }
+  .flash.success { background: #d4edda; color: #155724; }
+  .flash.error { background: #f8d7da; color: #721c24; }
+  .flash.warning { background: #fff3cd; color: #856404; }
+  .flash.info { background: #d1ecf1; color: #0c5460; }
+  .scroll { overflow-x: auto; max-height: 520px; overflow-y: auto; }
+  small.muted { color: #888; }
+</style>
+</head>
+<body>
+<header><h1>Registro de Actas de Entrega / Devolución de Equipos</h1></header>
+<main>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="card">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="stats">
+    <div class="stat"><div class="num">{{ total }}</div><div class="label">Equipos acumulados en total</div></div>
+    <div class="stat"><div class="num">{{ pendientes }}</div><div class="label">Filas marcadas para revisión</div></div>
+  </div>
+
+  <div class="card">
+    <h3>Subir correos/PDF de Actas</h3>
+    <form action="{{ url_for('subir') }}" method="post" enctype="multipart/form-data">
+      <input type="file" name="archivos" multiple accept=".msg,.pdf" required>
+      <small class="muted">Puedes seleccionar varios .msg y/o .pdf a la vez. Lo ya procesado antes no se duplica.</small>
+      <br><br>
+      <button type="submit">Procesar y agregar a la base</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Descargar Excel acumulado</h3>
+    <p><small class="muted">Incluye TODAS las filas procesadas hasta ahora, con su fecha de procesamiento.</small></p>
+    <a class="btn" href="{{ url_for('descargar') }}">Descargar Registro_de_Actas.xlsx</a>
+  </div>
+
+  <div class="card">
+    <h3>Vista previa (últimas 50 filas)</h3>
+    <div class="scroll">
+    <table>
+      <tr>
+        <th>Fecha proc.</th><th>Archivo</th><th>Tipo acta</th><th>Actividad</th>
+        <th>Nombre</th><th>DNI</th><th>Cod. Inv.</th><th>Descripción</th><th>Revisar</th>
+      </tr>
+      {% for r in preview %}
+      <tr class="{{ 'flag' if r['Revisar'] else '' }}">
+        <td>{{ r['Fecha de procesamiento'] }}</td>
+        <td>{{ r['Archivo origen'] }}</td>
+        <td>{{ r['Tipo de acta (formato)'] }}</td>
+        <td>{{ r['Tipo de actividad'] }}</td>
+        <td>{{ r['Nombre'] }}</td>
+        <td>{{ r['DNI / CE'] }}</td>
+        <td>{{ r['Cod. Inventario'] }}</td>
+        <td>{{ r['Descripción del activo'] }}</td>
+        <td>{{ r['Revisar'] }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+venv/
+registro_actas/data/*.db
+.DS_Store
