@@ -41,7 +41,11 @@ ALL_COLUMNS = COLUMNS + [REVIEW_COL, SOURCE_FILE_COL, PROCESSED_AT_COL]
 FORM_LABELS = {
     "TI-F-001": "TI-F-001 - Acta de entrega de celular",
     "TI-F-002": "TI-F-002 - Acta de entrega de equipo de cómputo",
+    "MA-F-028": "MA-F-028 - Acta de entrega/devolución de activos (general)",
 }
+# formularios cuya tabla de activos no trae IMEI/Número, sino Placa/Estado
+# y una columna de observación propia por fila
+FORMS_SIN_IMEI = {"MA-F-028"}
 
 
 # --------------------------------------------------------------------------
@@ -116,7 +120,13 @@ def _find_line(lines, *needles):
 
 
 def _detect_x_choice(lines, opt_a, opt_b):
-    ln = _find_line(lines, opt_a, opt_b)
+    # Puede haber más de una línea que mencione ambas palabras (p.ej. el
+    # título "ACTA DE ENTREGA O DEVOLUCIÓN DE ACTIVOS" también las trae);
+    # nos quedamos con la primera que además tenga un token "X" suelto.
+    candidatas = [ln for ln in lines
+                  if opt_a.lower() in ln["text"].lower() and opt_b.lower() in ln["text"].lower()]
+    ln = next((c for c in candidatas
+               if any(w["text"].strip().upper() == "X" for w in c["words"])), None)
     if not ln:
         return None
     words = ln["words"]
@@ -149,6 +159,63 @@ def _looks_corrupted(value):
             if frag and v.count(frag) > 1:
                 return True
     return False
+
+
+def _extract_signature_table(lines):
+    """
+    Extrae la tabla de firmas (sección 7) por POSICIÓN de columnas, en vez
+    de texto plano — necesario para formularios como MA-F-028 que no
+    traen el párrafo "Yo, ... con DNI...", así que los datos de la
+    persona solo están aquí.
+
+    Devuelve una lista de 2 o 3 dicts (uno por columna, de izquierda a
+    derecha) con {"dni": ..., "nombre": ..., "cargo": ...}. Lista vacía
+    si no se pudo ubicar la tabla.
+    """
+    dni_lines = [ln for ln in lines if ln["text"].count("DNI:") >= 1]
+    if not dni_lines:
+        return []
+    dni_lines.sort(key=lambda ln: -ln["text"].count("DNI:"))
+    dni_line = dni_lines[0]
+    anchors = sorted(w["x0"] for w in dni_line["words"]
+                      if w["text"].upper().rstrip(":") == "DNI")
+    if not anchors:
+        return []
+
+    # Los bins van de una etiqueta a la siguiente (no al punto medio): un
+    # nombre largo en una columna puede extenderse casi hasta la etiqueta
+    # vecina, así que el punto medio corta nombres. Dejamos un pequeño
+    # margen antes de la siguiente etiqueta para no comerle su columna.
+    bins = []
+    for i, x0 in enumerate(anchors):
+        start = 0 if i == 0 else anchors[i - 1]
+        end = 10_000 if i + 1 >= len(anchors) else anchors[i + 1] - 2
+        bins.append((start, end))
+
+    def collect(label_variants):
+        candidates = [ln for ln in lines
+                      if ln["top"] >= dni_line["top"] - 5
+                      and any(lv in ln["text"].upper() for lv in label_variants)]
+        if not candidates:
+            return ["" for _ in bins]
+        candidates.sort(key=lambda ln: ln["top"])
+        ln = candidates[0]
+        vals = ["" for _ in bins]
+        for w in ln["words"]:
+            wt = w["text"].upper().rstrip(":")
+            if wt in (lv.rstrip(":") for lv in label_variants):
+                continue
+            for i, (s, e) in enumerate(bins):
+                if s <= w["x0"] < e:
+                    vals[i] = (vals[i] + " " + w["text"]).strip()
+                    break
+        return vals
+
+    dni_vals = collect(["DNI:"])
+    nombre_vals = collect(["NOMBRE:", "NOMBRES:"])
+    cargo_vals = collect(["CARGO:"])
+    return [{"dni": dni_vals[i], "nombre": nombre_vals[i], "cargo": cargo_vals[i]}
+            for i in range(len(bins))]
 
 
 def _extract_header_fields(lines, text):
@@ -259,6 +326,10 @@ def _extract_asset_rows(page, lines):
                 labels_seen.append(("placa", w["x0"]))
             elif t.upper().startswith("ESTADO"):
                 labels_seen.append(("estado", w["x0"]))
+            elif t.upper().startswith("OBSERVACI") and "ES" not in t.upper():
+                # "OBSERVACIÓN" (columna, singular) — distinto de la sección
+                # "OBSERVACIONES" (plural) que usan TI-F-001/002 fuera de la tabla
+                labels_seen.append(("observacion_col", w["x0"]))
 
         if not labels_seen:
             continue
@@ -328,6 +399,23 @@ def process_pdf_bytes(pdf_bytes, fecha_correo, asunto_correo, source_filename):
             return out_rows, warnings
 
         header = _extract_header_fields(lines, text)
+
+        if codigo in FORMS_SIN_IMEI:
+            # Estos formularios no traen el párrafo "Yo, ... con DNI...",
+            # así que los datos de la persona solo están en la tabla de
+            # firmas (columna 2 = quien recibe/entrega, columna 3 =
+            # responsable de área, igual que en TI-F-001/002).
+            sig = _extract_signature_table(lines)
+            if len(sig) >= 2:
+                persona = sig[1]
+                header["nombre"] = persona.get("nombre") or header.get("nombre", "")
+                header["dni"] = persona.get("dni") or header.get("dni", "")
+                header["cargo"] = persona.get("cargo") or header.get("cargo", "")
+            if len(sig) >= 3:
+                encargado = sig[2]
+                header["encargado_nombre"] = encargado.get("nombre") or header.get("encargado_nombre", "")
+                header["encargado_dni"] = encargado.get("dni") or header.get("encargado_dni", "")
+
         assets = _extract_asset_rows(page, lines)
 
         if not assets:
@@ -356,9 +444,21 @@ def process_pdf_bytes(pdf_bytes, fecha_correo, asunto_correo, source_filename):
             row["Marca"] = asset.get("marca", "")
             row["Modelo"] = asset.get("modelo", "")
             row["Serie"] = asset.get("serie", "")
-            row["IMEI"] = asset.get("imei", "")
-            row["Número"] = asset.get("numero", "")
-            row["Observaciones"] = header.get("observaciones", "")
+            if codigo in FORMS_SIN_IMEI:
+                row["IMEI"] = ""
+                row["Número"] = ""
+                obs_parts = []
+                if asset.get("placa"):
+                    obs_parts.append(f"Placa: {asset['placa']}")
+                if asset.get("estado"):
+                    obs_parts.append(f"Estado: {asset['estado']}")
+                if asset.get("observacion_col"):
+                    obs_parts.append(asset["observacion_col"])
+                row["Observaciones"] = " | ".join(obs_parts)
+            else:
+                row["IMEI"] = asset.get("imei", "")
+                row["Número"] = asset.get("numero", "")
+                row["Observaciones"] = header.get("observaciones", "")
             row["Encargado de área (nombre)"] = header.get("encargado_nombre", "")
             row["Encargado de área (DNI)"] = header.get("encargado_dni", "")
 
@@ -369,6 +469,8 @@ def process_pdf_bytes(pdf_bytes, fecha_correo, asunto_correo, source_filename):
                 flags.append("Cod. Inventario con patrón sospechoso")
             if not asset.get("cod"):
                 flags.append("Cod. Inventario vacío")
+            if codigo in FORMS_SIN_IMEI and not header.get("nombre"):
+                flags.append("no se detectó el responsable de entrega")
             row[REVIEW_COL] = "; ".join(flags)
             if flags:
                 warnings.append(f"{source_filename}: " + "; ".join(flags))

@@ -11,12 +11,13 @@ Registro de Actas de Entrega/Devolución de Equipos — app web.
 - Sin SharePoint/OneDrive, sin suscripciones de pago.
 """
 import os
+from functools import wraps
 
-from flask import Flask, render_template, request, send_file, redirect, url_for, flash
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash, Response
 import io
 
 from registro_actas import db
-from registro_actas.parser import process_uploaded_file, REVIEW_COL
+from registro_actas.parser import process_uploaded_file, REVIEW_COL, ALL_COLUMNS
 from registro_actas.excel_export import build_excel_bytes
 
 app = Flask(__name__)
@@ -25,21 +26,68 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-cambia-esto")
 MAX_CONTENT_LENGTH = 60 * 1024 * 1024  # 60 MB por lote subido
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
+# Contraseña de acceso (opcional). Si no se define la variable de entorno
+# APP_PASSWORD, la app queda abierta sin login (igual que antes).
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+
+def _check_auth(password):
+    return password == APP_PASSWORD
+
 
 @app.before_request
 def _ensure_db():
     db.init_db()
 
 
+@app.before_request
+def _require_login():
+    if not APP_PASSWORD:
+        return None  # sin contraseña configurada -> app abierta, como antes
+    auth = request.authorization
+    if not auth or not _check_auth(auth.password):
+        return Response(
+            "Acceso restringido. Ingresa la contraseña.", 401,
+            {"WWW-Authenticate": 'Basic realm="Registro de Actas"'},
+        )
+    return None
+
+
 @app.route("/", methods=["GET"])
 def index():
-    rows = db.get_all_rows()
-    total = len(rows)
-    pendientes = sum(1 for r in rows if r.get(REVIEW_COL))
-    # muestra solo las últimas 50 filas en la vista previa, para no cargar
-    # una tabla gigante en el navegador
-    preview = rows[-50:]
-    return render_template("index.html", total=total, pendientes=pendientes, preview=list(reversed(preview)))
+    total = db.count_rows()
+    pendientes = len(db.search_rows(solo_pendientes=True, limit=100000))
+
+    q = (request.args.get("q") or "").strip()
+    solo_pend = request.args.get("pendientes") == "1"
+    if q or solo_pend:
+        preview = db.search_rows(query=q, solo_pendientes=solo_pend, limit=200)
+    else:
+        preview = list(reversed(db.get_all_rows()[-50:]))
+
+    return render_template("index.html", total=total, pendientes=pendientes,
+                            preview=preview, q=q, solo_pend=solo_pend)
+
+
+@app.route("/editar/<int:row_id>", methods=["GET", "POST"])
+def editar(row_id):
+    row = db.get_row(row_id)
+    if not row:
+        flash(f"No se encontró la fila #{row_id}.", "error")
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        nuevos = {}
+        for col in ALL_COLUMNS:
+            if col == "Fecha de procesamiento":
+                continue  # la pone el sistema, no se edita a mano
+            if col in request.form:
+                nuevos[col] = request.form.get(col, "")
+        db.update_row(row_id, nuevos)
+        flash(f"Fila #{row_id} actualizada.", "success")
+        return redirect(url_for("index"))
+
+    return render_template("editar.html", row=row, columns=ALL_COLUMNS)
 
 
 @app.route("/subir", methods=["POST"])

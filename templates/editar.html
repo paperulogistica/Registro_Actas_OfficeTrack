@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Editar fila #{{ row['id'] }}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f9; color: #1f2d3d; }
+  header { background: #1F3864; color: white; padding: 20px 32px; }
+  header h1 { margin: 0; font-size: 20px; }
+  main { padding: 24px 32px; max-width: 760px; margin: 0 auto; }
+  .card { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  label { display:block; font-size: 12px; font-weight: bold; color:#555; margin-top: 14px; margin-bottom: 4px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; }
+  input[readonly] { background: #eee; color: #888; }
+  button, .btn { background: #1F3864; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 20px; }
+  .btn.secondary { background: #888; margin-left: 8px; }
+</style>
+</head>
+<body>
+<header><h1>Editar fila #{{ row['id'] }}</h1></header>
+<main>
+  <div class="card">
+    <form method="post">
+      {% for col in columns %}
+        <label>{{ col }}{% if col == 'Fecha de procesamiento' %} (no editable){% endif %}</label>
+        <input type="text" name="{{ col }}" value="{{ row[col] or '' }}"
+               {% if col == 'Fecha de procesamiento' %}readonly{% endif %}>
+      {% endfor %}
+      <button type="submit">Guardar cambios</button>
+      <a class="btn secondary" href="{{ url_for('index') }}">Cancelar</a>
+    </form>
+  </div>
+</main>
+</body>
+</html>

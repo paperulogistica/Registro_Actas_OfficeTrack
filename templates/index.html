@@ -77,11 +77,17 @@
 
   <div class="card">
     <h3>Vista previa (últimas 50 filas)</h3>
+    <form method="get" style="margin-bottom:14px;">
+      <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nombre, DNI, código de inventario, asunto..." style="padding:8px 10px; border-radius:6px; border:1px solid #ccc; width:320px;">
+      <label style="font-weight:normal; display:inline;"><input type="checkbox" name="pendientes" value="1" {{ 'checked' if solo_pend }}> solo pendientes de revisión</label>
+      <button type="submit">Buscar</button>
+      {% if q or solo_pend %}<a class="btn" href="{{ url_for('index') }}" style="background:#888;">Limpiar filtro</a>{% endif %}
+    </form>
     <div class="scroll">
     <table>
       <tr>
         <th>Fecha proc.</th><th>Archivo</th><th>Tipo acta</th><th>Actividad</th>
-        <th>Nombre</th><th>DNI</th><th>Cod. Inv.</th><th>Descripción</th><th>Revisar</th>
+        <th>Nombre</th><th>DNI</th><th>Cod. Inv.</th><th>Descripción</th><th>Revisar</th><th></th>
       </tr>
       {% for r in preview %}
       <tr class="{{ 'flag' if r['Revisar'] else '' }}">
@@ -94,10 +100,12 @@
         <td>{{ r['Cod. Inventario'] }}</td>
         <td>{{ r['Descripción del activo'] }}</td>
         <td>{{ r['Revisar'] }}</td>
+        <td><a href="{{ url_for('editar', row_id=r['id']) }}">Editar</a></td>
       </tr>
       {% endfor %}
     </table>
     </div>
+    <small class="muted">{{ 'Mostrando resultados de la búsqueda.' if (q or solo_pend) else 'Mostrando las últimas 50 filas. Usa el buscador para ver más.' }}</small>
   </div>
 
 </main>

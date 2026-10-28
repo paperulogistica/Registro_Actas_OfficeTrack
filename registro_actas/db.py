@@ -86,6 +86,49 @@ def get_all_rows():
     return [dict(r) for r in rows]
 
 
+def search_rows(query="", solo_pendientes=False, limit=200):
+    """
+    Busca filas por coincidencia parcial en Nombre, DNI, Cod. Inventario,
+    Asunto del correo o Tipo de acta. query vacío = últimas `limit` filas.
+    """
+    conn = _connect()
+    sql = "SELECT * FROM actas WHERE 1=1"
+    params = []
+    if query:
+        like = f"%{query}%"
+        sql += (
+            ' AND ("Nombre" LIKE ? OR "DNI / CE" LIKE ? OR "Cod. Inventario" LIKE ?'
+            ' OR "Asunto del correo" LIKE ? OR "Tipo de acta (formato)" LIKE ?'
+            ' OR "Archivo origen" LIKE ?)'
+        )
+        params += [like, like, like, like, like, like]
+    if solo_pendientes:
+        sql += ' AND "Revisar" IS NOT NULL AND "Revisar" != \'\''
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_row(row_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM actas WHERE id = ?", (row_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_row(row_id, values):
+    """values: dict columna -> nuevo valor (solo de ALL_COLUMNS)."""
+    if not values:
+        return
+    conn = _connect()
+    set_sql = ", ".join(f'"{c}" = ?' for c in values)
+    conn.execute(f'UPDATE actas SET {set_sql} WHERE id = ?', list(values.values()) + [row_id])
+    conn.commit()
+    conn.close()
+
+
 def count_rows():
     conn = _connect()
     n = conn.execute("SELECT COUNT(*) FROM actas").fetchone()[0]
