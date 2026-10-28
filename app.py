@@ -86,6 +86,24 @@ def subir():
     return redirect(url_for("index"))
 
 
+@app.route("/limpiar", methods=["POST"])
+def limpiar():
+    """
+    Borra TODO lo acumulado. Es irreversible, así que exige que el
+    usuario escriba la palabra BORRAR en el formulario (además de la
+    confirmación de JavaScript en el navegador) — un clic accidental en
+    el botón no alcanza para borrar nada.
+    """
+    confirmacion = (request.form.get("confirmacion") or "").strip().upper()
+    if confirmacion != "BORRAR":
+        flash('Para limpiar la base tienes que escribir exactamente "BORRAR" en el campo de confirmación. No se borró nada.', "error")
+        return redirect(url_for("index"))
+
+    n = db.clear_all()
+    flash(f"Se borraron {n} fila(s) acumulada(s). La base quedó vacía.", "success")
+    return redirect(url_for("index"))
+
+
 @app.route("/descargar")
 def descargar():
     rows = db.get_all_rows()

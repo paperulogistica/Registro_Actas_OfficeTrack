@@ -64,6 +64,17 @@
     <a class="btn" href="{{ url_for('descargar') }}">Descargar Registro_de_Actas.xlsx</a>
   </div>
 
+  <div class="card" style="border: 1px solid #f5c6cb;">
+    <h3 style="color:#a94442;">Limpiar base acumulada</h3>
+    <p><small class="muted">Borra TODAS las filas y el registro de archivos ya procesados. Es irreversible. Descarga el Excel antes si quieres conservar un respaldo.</small></p>
+    <form action="{{ url_for('limpiar') }}" method="post"
+          onsubmit="return confirm('¿Seguro que quieres borrar TODO lo acumulado? Esta acción no se puede deshacer.');">
+      <input type="text" name="confirmacion" placeholder='Escribe BORRAR para confirmar' required
+             style="padding:8px; border-radius:6px; border:1px solid #ccc; width:220px;">
+      <button type="submit" style="background:#a94442;">Limpiar todo</button>
+    </form>
+  </div>
+
   <div class="card">
     <h3>Vista previa (últimas 50 filas)</h3>
     <div class="scroll">

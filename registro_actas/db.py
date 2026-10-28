@@ -91,3 +91,19 @@ def count_rows():
     n = conn.execute("SELECT COUNT(*) FROM actas").fetchone()[0]
     conn.close()
     return n
+
+
+def clear_all():
+    """
+    Borra TODO lo acumulado (filas y el registro de archivos ya
+    procesados). Es destructivo e irreversible desde la propia web, así
+    que la ruta que llama a esto exige una confirmación explícita antes
+    de ejecutarlo. Devuelve cuántas filas se borraron.
+    """
+    n = count_rows()
+    conn = _connect()
+    conn.execute("DELETE FROM actas")
+    conn.execute("DELETE FROM archivos_procesados")
+    conn.commit()
+    conn.close()
+    return n
