@@ -12,11 +12,16 @@ Principios:
 import hashlib
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .parser import ALL_COLUMNS, PROCESSED_AT_COL
 
 DB_PATH = os.environ.get("ACTAS_DB_PATH", os.path.join(os.path.dirname(__file__), "data", "actas.db"))
+
+# Cuánto tiempo se conserva el PDF original para poder descargarlo
+# renombrado. Pasado este tiempo se borra solo; la fila con los datos
+# extraídos NO se borra nunca, solo el archivo.
+PDF_TTL_SECONDS = 3600
 
 
 def _connect():
@@ -33,7 +38,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS actas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             {cols_sql},
-            file_hash TEXT
+            file_hash TEXT,
+            pdf_hash TEXT
         )
     """)
     conn.execute("""
@@ -43,6 +49,20 @@ def init_db():
             processed_at TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pdf_temporal (
+            pdf_hash TEXT PRIMARY KEY,
+            pdf_bytes BLOB,
+            pdf_filename TEXT,
+            expira_en TEXT
+        )
+    """)
+    # migración suave: si la tabla "actas" viene de antes de agregar
+    # pdf_hash, se la agregamos sin romper lo ya guardado.
+    try:
+        conn.execute('ALTER TABLE actas ADD COLUMN pdf_hash TEXT')
+    except sqlite3.OperationalError:
+        pass  # la columna ya existe
     conn.commit()
     conn.close()
 
@@ -64,12 +84,13 @@ def insert_rows(rows, file_hash, filename):
     now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     conn = _connect()
     cols = ALL_COLUMNS
-    placeholders = ", ".join("?" for _ in cols) + ", ?"
-    col_names = ", ".join(f'"{c}"' for c in cols) + ", file_hash"
+    placeholders = ", ".join("?" for _ in cols) + ", ?, ?"
+    col_names = ", ".join(f'"{c}"' for c in cols) + ", file_hash, pdf_hash"
     for row in rows:
         row = dict(row)
         row[PROCESSED_AT_COL] = now
-        values = [row.get(c, "") for c in cols] + [file_hash]
+        pdf_hash = row.get("_pdf_hash", "")
+        values = [row.get(c, "") for c in cols] + [file_hash, pdf_hash]
         conn.execute(f'INSERT INTO actas ({col_names}) VALUES ({placeholders})', values)
     conn.execute(
         "INSERT OR REPLACE INTO archivos_procesados (file_hash, filename, processed_at) VALUES (?, ?, ?)",
@@ -77,6 +98,48 @@ def insert_rows(rows, file_hash, filename):
     )
     conn.commit()
     conn.close()
+
+
+def store_pdf_temp(pdf_hash, pdf_bytes, pdf_filename):
+    """Guarda (o renueva) el PDF original por PDF_TTL_SECONDS."""
+    expira_en = (datetime.now() + timedelta(seconds=PDF_TTL_SECONDS)).isoformat()
+    conn = _connect()
+    conn.execute(
+        "INSERT OR REPLACE INTO pdf_temporal (pdf_hash, pdf_bytes, pdf_filename, expira_en) VALUES (?, ?, ?, ?)",
+        (pdf_hash, pdf_bytes, pdf_filename, expira_en),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _prune_expired_pdfs(conn):
+    conn.execute("DELETE FROM pdf_temporal WHERE expira_en < ?", (datetime.now().isoformat(),))
+
+
+def get_pdf_if_valid(pdf_hash):
+    """Devuelve (pdf_bytes, pdf_filename) si el PDF sigue vigente, o None."""
+    if not pdf_hash:
+        return None
+    conn = _connect()
+    _prune_expired_pdfs(conn)
+    conn.commit()
+    row = conn.execute(
+        "SELECT pdf_bytes, pdf_filename FROM pdf_temporal WHERE pdf_hash = ?", (pdf_hash,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return row["pdf_bytes"], row["pdf_filename"]
+
+
+def get_valid_pdf_hashes():
+    """Set de pdf_hash todavía vigentes (para marcar qué filas sí se pueden descargar)."""
+    conn = _connect()
+    _prune_expired_pdfs(conn)
+    conn.commit()
+    rows = conn.execute("SELECT pdf_hash FROM pdf_temporal").fetchall()
+    conn.close()
+    return {r["pdf_hash"] for r in rows}
 
 
 def get_all_rows():
@@ -147,6 +210,7 @@ def clear_all():
     conn = _connect()
     conn.execute("DELETE FROM actas")
     conn.execute("DELETE FROM archivos_procesados")
+    conn.execute("DELETE FROM pdf_temporal")
     conn.commit()
     conn.close()
     return n

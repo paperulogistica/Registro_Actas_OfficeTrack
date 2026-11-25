@@ -15,6 +15,7 @@ Toda la lógica es la misma validada en el prototipo de escritorio:
 Trabaja 100% en memoria (bytes in -> dicts out). No escribe nada a disco
 salvo archivos temporales que limpia él mismo.
 """
+import hashlib
 import io
 import os
 import re
@@ -482,19 +483,25 @@ def process_pdf_bytes(pdf_bytes, fecha_correo, asunto_correo, source_filename):
 def process_uploaded_file(filename, file_bytes):
     """
     Punto de entrada único para la web: recibe un archivo subido (.msg o
-    .pdf) y devuelve (rows, warnings). rows ya trae 'Archivo origen'
-    puesto (la fecha de procesamiento la pone la capa de base de datos,
-    no el parser, para que quede fijada en el momento exacto de guardar).
+    .pdf) y devuelve (rows, warnings, pdf_blobs). rows ya trae
+    'Archivo origen' puesto (la fecha de procesamiento la pone la capa de
+    base de datos, no el parser, para que quede fijada en el momento
+    exacto de guardar), y una clave interna "_pdf_hash" que identifica el
+    PDF del Acta del que salió esa fila (para poder descargarlo renombrado
+    después, mientras siga vigente). pdf_blobs es {hash: (bytes, nombre)}
+    con los PDFs nuevos encontrados en esta llamada.
     """
     name_lower = filename.lower()
     all_rows, all_warnings = [], []
+    pdf_blobs = {}
 
     if name_lower.endswith(".msg"):
         pdfs = extract_pdfs_from_msg_bytes(file_bytes, filename)
         if not pdfs:
             all_warnings.append(f"{filename}: no se encontró un PDF adjunto (Acta) dentro del correo.")
-            return all_rows, all_warnings
+            return all_rows, all_warnings, pdf_blobs
         for pdf_bytes, pdf_name, fecha_correo, asunto in pdfs:
+            pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
             try:
                 rows, warnings = process_pdf_bytes(pdf_bytes, fecha_correo, asunto, f"{filename} -> {pdf_name}")
             except Exception as e:
@@ -502,19 +509,43 @@ def process_uploaded_file(filename, file_bytes):
                 continue
             for r in rows:
                 r[SOURCE_FILE_COL] = filename
+                r["_pdf_hash"] = pdf_hash
             all_rows.extend(rows)
             all_warnings.extend(warnings)
+            pdf_blobs[pdf_hash] = (pdf_bytes, pdf_name)
     elif name_lower.endswith(".pdf"):
+        pdf_hash = hashlib.sha256(file_bytes).hexdigest()
         try:
             rows, warnings = process_pdf_bytes(file_bytes, "", "", filename)
         except Exception as e:
             all_warnings.append(f"{filename}: error al procesar el PDF ({e}). Revisar manualmente.")
-            return all_rows, all_warnings
+            return all_rows, all_warnings, pdf_blobs
         for r in rows:
             r[SOURCE_FILE_COL] = filename
+            r["_pdf_hash"] = pdf_hash
         all_rows.extend(rows)
         all_warnings.extend(warnings)
+        pdf_blobs[pdf_hash] = (file_bytes, filename)
     else:
         all_warnings.append(f"{filename}: extensión no soportada (solo .msg o .pdf).")
 
-    return all_rows, all_warnings
+    return all_rows, all_warnings, pdf_blobs
+
+
+_INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]+')
+
+
+def build_renamed_filename(row):
+    """
+    "Equipo - Serie - Nombre completo.pdf", a partir de una fila ya
+    guardada. Si falta la serie, usa el Cod. Inventario; si falta el
+    nombre, usa "SIN NOMBRE". Nunca devuelve un nombre vacío.
+    """
+    equipo = (row.get("Descripción del activo") or "EQUIPO").strip()
+    serie = (row.get("Serie") or row.get("Cod. Inventario") or "SIN SERIE").strip()
+    nombre = (row.get("Nombre") or "SIN NOMBRE").strip()
+    partes = [p for p in (equipo, serie, nombre) if p]
+    nombre_archivo = " - ".join(partes) or f"Acta_{row.get('id', '')}"
+    nombre_archivo = _INVALID_FILENAME_CHARS.sub("-", nombre_archivo)
+    nombre_archivo = re.sub(r"\s+", " ", nombre_archivo).strip()
+    return nombre_archivo[:150] + ".pdf"

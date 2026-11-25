@@ -17,7 +17,7 @@ from flask import Flask, render_template, request, send_file, redirect, url_for,
 import io
 
 from registro_actas import db
-from registro_actas.parser import process_uploaded_file, REVIEW_COL, ALL_COLUMNS
+from registro_actas.parser import process_uploaded_file, REVIEW_COL, ALL_COLUMNS, build_renamed_filename
 from registro_actas.excel_export import build_excel_bytes
 
 app = Flask(__name__)
@@ -65,8 +65,11 @@ def index():
     else:
         preview = list(reversed(db.get_all_rows()[-50:]))
 
+    pdfs_vigentes = db.get_valid_pdf_hashes()
+
     return render_template("index.html", total=total, pendientes=pendientes,
-                            preview=preview, q=q, solo_pend=solo_pend)
+                            preview=preview, q=q, solo_pend=solo_pend,
+                            pdfs_vigentes=pdfs_vigentes, pdf_ttl_min=db.PDF_TTL_SECONDS // 60)
 
 
 @app.route("/editar/<int:row_id>", methods=["GET", "POST"])
@@ -114,18 +117,21 @@ def subir():
             )
             continue
 
-        rows, warnings = process_uploaded_file(filename, content)
+        rows, warnings, pdf_blobs = process_uploaded_file(filename, content)
         avisos.extend(warnings)
         if rows:
             db.insert_rows(rows, file_hash, filename)
             total_nuevas += len(rows)
+            for pdf_hash, (pdf_bytes, pdf_name) in pdf_blobs.items():
+                db.store_pdf_temp(pdf_hash, pdf_bytes, pdf_name)
         else:
             # igual se registra el hash para no reintentarlo infinitamente
             # si el archivo no trae ningún Acta reconocible
             db.insert_rows([], file_hash, filename)
 
     if total_nuevas:
-        flash(f"Se agregaron {total_nuevas} fila(s) nueva(s) a la base acumulada.", "success")
+        flash(f"Se agregaron {total_nuevas} fila(s) nueva(s) a la base acumulada. "
+              f"Los PDF de este lote se pueden descargar renombrados durante la próxima hora.", "success")
     if total_omitidas:
         flash(f"{total_omitidas} archivo(s) ya habían sido procesados antes y se omitieron (sin duplicar).", "info")
     for a in avisos:
@@ -150,6 +156,37 @@ def limpiar():
     n = db.clear_all()
     flash(f"Se borraron {n} fila(s) acumulada(s). La base quedó vacía.", "success")
     return redirect(url_for("index"))
+
+
+@app.route("/pdf/<int:row_id>")
+def descargar_pdf(row_id):
+    """
+    Descarga el PDF del Acta de esa fila, renombrado como
+    "Equipo - Serie - Nombre.pdf". Solo funciona dentro de la hora
+    siguiente a haberse procesado (PDF_TTL_SECONDS) — pasado ese tiempo
+    el archivo ya se borró del servidor; los datos de la fila siguen
+    intactos, solo el documento deja de estar disponible.
+    """
+    row = db.get_row(row_id)
+    if not row:
+        flash(f"No se encontró la fila #{row_id}.", "error")
+        return redirect(url_for("index"))
+
+    pdf = db.get_pdf_if_valid(row.get("pdf_hash"))
+    if not pdf:
+        flash(f"El PDF de la fila #{row_id} ya no está disponible — se conserva solo "
+              f"{db.PDF_TTL_SECONDS // 60} minutos después de procesarse. "
+              f"Los datos extraídos siguen intactos; si necesitas el documento, vuelve a subir el correo.", "error")
+        return redirect(url_for("index"))
+
+    pdf_bytes, _original_name = pdf
+    nombre_descarga = build_renamed_filename(row)
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=nombre_descarga,
+    )
 
 
 @app.route("/descargar")

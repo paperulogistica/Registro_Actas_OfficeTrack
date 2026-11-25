@@ -109,7 +109,7 @@
           </label>
           <div class="filelist" id="filelist"></div>
           <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-            <small class="muted">Lo ya procesado antes no se duplica.</small>
+            <small class="muted">Lo ya procesado antes no se duplica. El PDF de cada acta se puede descargar renombrado (📄 en la tabla) solo durante la próxima hora.</small>
             <button type="submit" id="submit-btn">📤 Procesar</button>
           </div>
         </form>
@@ -159,7 +159,14 @@
         <td>{{ r['Cod. Inventario'] }}</td>
         <td>{{ r['Descripción del activo'] }}</td>
         <td>{{ r['Revisar'] }}</td>
-        <td><a href="{{ url_for('editar', row_id=r['id']) }}" title="Editar">✏️</a></td>
+        <td>
+          <a href="{{ url_for('editar', row_id=r['id']) }}" title="Editar">✏️</a>
+          {% if r['pdf_hash'] and r['pdf_hash'] in pdfs_vigentes %}
+            <a href="{{ url_for('descargar_pdf', row_id=r['id']) }}" title="Descargar PDF renombrado (disponible por {{ pdf_ttl_min }} min desde que se procesó)">📄</a>
+          {% else %}
+            <span title="El PDF ya expiró (se conserva {{ pdf_ttl_min }} min tras procesarse)" style="color:#ccc; cursor: default;">📄</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </table>
