@@ -11,6 +11,7 @@ Registro de Actas de Entrega/Devolución de Equipos — app web.
 - Sin SharePoint/OneDrive, sin suscripciones de pago.
 """
 import os
+import zipfile
 from functools import wraps
 
 from flask import Flask, render_template, request, send_file, redirect, url_for, flash, Response
@@ -186,6 +187,60 @@ def descargar_pdf(row_id):
         mimetype="application/pdf",
         as_attachment=True,
         download_name=nombre_descarga,
+    )
+
+
+@app.route("/pdfs_zip")
+def descargar_pdfs_zip():
+    """
+    Descarga en un .zip todos los PDF todavía vigentes (dentro de su hora)
+    que coincidan con el filtro de búsqueda actual (q / pendientes) -- el
+    mismo filtro que se esté viendo en la tabla. Sin filtro, intenta con
+    todas las filas con PDF vigente.
+    """
+    q = (request.args.get("q") or "").strip()
+    solo_pend = request.args.get("pendientes") == "1"
+
+    if q or solo_pend:
+        rows = db.search_rows(query=q, solo_pendientes=solo_pend, limit=100000)
+    else:
+        rows = db.get_all_rows()
+
+    pdfs_vigentes = db.get_valid_pdf_hashes()
+    rows_con_pdf = [r for r in rows if r.get("pdf_hash") and r["pdf_hash"] in pdfs_vigentes]
+
+    if not rows_con_pdf:
+        flash(f"No hay PDFs vigentes para descargar ahora mismo (se conservan solo "
+              f"{db.PDF_TTL_SECONDS // 60} minutos tras procesarse). Los datos de las filas siguen intactos.", "error")
+        return redirect(url_for("index", q=q, pendientes="1" if solo_pend else None))
+
+    buf = io.BytesIO()
+    nombres_usados = {}
+    pdf_cache = {}  # evita leer de la base el mismo PDF varias veces si varias filas lo comparten
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for row in rows_con_pdf:
+            pdf_hash = row["pdf_hash"]
+            if pdf_hash not in pdf_cache:
+                pdf_cache[pdf_hash] = db.get_pdf_if_valid(pdf_hash)
+            pdf = pdf_cache[pdf_hash]
+            if not pdf:
+                continue  # expiró justo entre la consulta y ahora
+            pdf_bytes, _ = pdf
+            nombre = build_renamed_filename(row)
+            if nombre in nombres_usados:
+                nombres_usados[nombre] += 1
+                base, ext = nombre.rsplit(".", 1)
+                nombre = f"{base} ({nombres_usados[nombre]}).{ext}"
+            else:
+                nombres_usados[nombre] = 0
+            zf.writestr(nombre, pdf_bytes)
+
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="Actas_PDF.zip",
     )
 
 

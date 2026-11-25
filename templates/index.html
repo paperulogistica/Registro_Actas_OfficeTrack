@@ -140,6 +140,7 @@
         <label><input type="checkbox" name="pendientes" value="1" {{ 'checked' if solo_pend }}> solo pendientes</label>
         <button type="submit" class="sm">Buscar</button>
         {% if q or solo_pend %}<a class="btn gray sm" href="{{ url_for('index') }}">✕ Limpiar</a>{% endif %}
+        <a class="btn sm" href="{{ url_for('descargar_pdfs_zip', q=q, pendientes='1' if solo_pend else None) }}" title="Descarga en .zip los PDF vigentes de las filas que ves aquí">📦 ZIP de PDFs</a>
       </form>
     </div>
     <div class="scroll">
